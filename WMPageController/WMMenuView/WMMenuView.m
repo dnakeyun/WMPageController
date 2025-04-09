@@ -7,12 +7,16 @@
 //
 
 #import "WMMenuView.h"
+#import "UIScrollView+WMRTLSupport.h"
+#import "UIView+WMRTLSupport.h"
+
 #define WMMENUITEM_TAG_OFFSET 6250
 #define WMBADGEVIEW_TAG_OFFSET 1212
 #define WMDEFAULT_VAULE(value, defaultValue) (value != WMUNDEFINED_VALUE ? value : defaultValue)
 
 @interface WMMenuView () 
 @property (nonatomic, weak) WMMenuItem *selItem;
+/// 每个WMMenuItem的CGRect
 @property (nonatomic, strong) NSMutableArray *frames;
 @property (nonatomic, assign) NSInteger selectIndex;
 @property (nonatomic, readonly) NSInteger titlesCount;
@@ -339,14 +343,16 @@
     if (self.rightView) {
         CGRect rightFrame = self.rightView.frame;
         rightFrame.origin.x = frame.size.width - rightFrame.size.width;
-        self.rightView.frame = rightFrame;
+//        self.rightView.frame = rightFrame;
+        [self.rightView setRtl_frame:rightFrame isLTR:self.isLTR];
         frame.size.width -= rightFrame.size.width;
     }
     
     if (self.leftView) {
         CGRect leftFrame = self.leftView.frame;
         leftFrame.origin.x = 0;
-        self.leftView.frame = leftFrame;
+//        self.leftView.frame = leftFrame;
+        [self.rightView setRtl_frame:leftFrame isLTR:self.isLTR];
         frame.origin.x += leftFrame.size.width;
         frame.size.width -= leftFrame.size.width;
     }
@@ -478,7 +484,9 @@
     
     for (int i = 0; i < self.titlesCount; i++) {
         CGRect frame = [self.frames[i] CGRectValue];
-        WMMenuItem *item = [[WMMenuItem alloc] initWithFrame:frame];
+        WMMenuItem *item = [[WMMenuItem alloc] initWithFrame:CGRectZero];
+        [item setRtl_refWidth:self.scrollView.contentSize.width];
+        [item setRtl_frame:frame isLTR:self.isLTR];
         item.tag = (i + WMMENUITEM_TAG_OFFSET);
         item.delegate = self;
         item.text = [self.dataSource menuView:self titleAtIndex:i];
@@ -549,9 +557,16 @@
             CGRect frame = [self.frames[i] CGRectValue];
             frame.origin.x += shiftDis(i);
             self.frames[i] = [NSValue valueWithCGRect:frame];
+            contentWidth = self.scrollView.frame.size.width;
         }
-        contentWidth = self.scrollView.frame.size.width;
     }
+    // 适配RTL，对frames内的rect进行转换
+    for (int i = 0; i < self.frames.count; i++) {
+        CGRect frame = [self.frames[i] CGRectValue];
+        CGRect convertFrame = [UIView rtl_frame:self.isLTR convertFrame:frame refWidth:contentWidth];
+        self.frames[i] = [NSValue valueWithCGRect:convertFrame];
+    }
+    [self.scrollView setRtl_contentRefWidth:contentWidth];
     self.scrollView.contentSize = CGSizeMake(contentWidth, self.frame.size.height);
 }
 

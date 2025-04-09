@@ -7,6 +7,8 @@
 //
 
 #import "WMPageController.h"
+#import "UIView+WMRTLSupport.h"
+#import "UIScrollView+WMRTLSupport.h"
 
 NSString *const WMControllerDidAddToSuperViewNotification = @"WMControllerDidAddToSuperViewNotification";
 NSString *const WMControllerDidFullyDisplayedNotification = @"WMControllerDidFullyDisplayedNotification";
@@ -411,6 +413,8 @@ static NSInteger const kWMControllerCountUndefined = -1;
     self.delegate = self;
     self.dataSource = self;
     
+    self.ltr = true;
+    
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:nil];
 }
@@ -420,9 +424,13 @@ static NSInteger const kWMControllerCountUndefined = -1;
     _menuViewFrame = [self.dataSource pageController:self preferredFrameForMenuView:self.menuView];
     _contentViewFrame = [self.dataSource pageController:self preferredFrameForContentView:self.scrollView];
     _childViewFrames = [NSMutableArray array];
+    CGFloat contentWidth = _contentViewFrame.size.width;
+    CGFloat totalContentWidth = self.childControllersCount * contentWidth;
+    // 适配RTL，对_childViewFrames内的rect进行转换
     for (int i = 0; i < self.childControllersCount; i++) {
         CGRect frame = CGRectMake(i * _contentViewFrame.size.width, 0, _contentViewFrame.size.width, _contentViewFrame.size.height);
-        [_childViewFrames addObject:[NSValue valueWithCGRect:frame]];
+        CGRect convertFrame = [UIView rtl_frame:self.isLTR convertFrame:frame refWidth:totalContentWidth];
+        [_childViewFrames addObject:[NSValue valueWithCGRect:convertFrame]];
     }
 }
 
@@ -461,6 +469,7 @@ static NSInteger const kWMControllerCountUndefined = -1;
     menuView.progressViewIsNaughty = self.progressViewIsNaughty;
     menuView.progressViewCornerRadius = self.progressViewCornerRadius;
     menuView.showOnNavigationBar = self.showOnNavigationBar;
+    menuView.ltr = self.isLTR;
     if (self.titleFontName) {
         menuView.fontName = self.titleFontName;
     }
@@ -476,7 +485,10 @@ static NSInteger const kWMControllerCountUndefined = -1;
 }
 
 - (void)wm_layoutChildViewControllers {
-    int currentPage = (int)(self.scrollView.contentOffset.x / _contentViewFrame.size.width);
+    // 适配RTL
+    CGPoint convertPoint = [self.scrollView rtl_contentOffset:self.scrollView.contentOffset isLTR:self.isLTR];
+    int currentPage = (int)(convertPoint.x / _contentViewFrame.size.width);
+//    int currentPage = (int)(self.scrollView.contentOffset.x / _contentViewFrame.size.width);
     int length = (int)self.preloadPolicy;
     int left = currentPage - length - 1;
     int right = currentPage + length + 1;
@@ -643,8 +655,12 @@ static NSInteger const kWMControllerCountUndefined = -1;
     CGFloat oldContentOffsetX = self.scrollView.contentOffset.x;
     CGFloat contentWidth = self.scrollView.contentSize.width;
     self.scrollView.frame = _contentViewFrame;
-    self.scrollView.contentSize = CGSizeMake(self.childControllersCount * _contentViewFrame.size.width, 0);
-    CGFloat xContentOffset = contentWidth == 0 ? self.selectIndex * _contentViewFrame.size.width : oldContentOffsetX / contentWidth * self.childControllersCount * _contentViewFrame.size.width;
+    CGFloat refWidth = self.childControllersCount * _contentViewFrame.size.width;
+    // 适配RTL
+    [self.scrollView setRtl_contentRefWidth:refWidth];
+    self.scrollView.contentSize = CGSizeMake(refWidth, 0);
+    CGFloat xContentOffset = contentWidth == 0 ? [_childViewFrames[self.selectIndex] CGRectValue].origin.x : oldContentOffsetX / contentWidth * self.childControllersCount * _contentViewFrame.size.width;
+//    CGFloat xContentOffset = contentWidth == 0 ? self.selectIndex * _contentViewFrame.size.width : oldContentOffsetX / contentWidth * self.childControllersCount * _contentViewFrame.size.width;
     [self.scrollView setContentOffset:CGPointMake(xContentOffset, 0)];
     _shouldNotScroll = NO;
 }
@@ -659,7 +675,9 @@ static NSInteger const kWMControllerCountUndefined = -1;
 
 - (void)wm_adjustMenuViewFrame {
     CGFloat oriWidth = self.menuView.frame.size.width;
-    self.menuView.frame = _menuViewFrame;
+    // 适配RTL
+//    self.menuView.frame = _menuViewFrame;
+    [self.menuView setRtl_frame:_menuViewFrame isLTR:self.ltr];
     [self.menuView resetFrames];
     if (oriWidth != self.menuView.frame.size.width) {
         [self.menuView refreshContenOffset];
@@ -729,7 +747,9 @@ static NSInteger const kWMControllerCountUndefined = -1;
     
     [self wm_layoutChildViewControllers];
     if (_startDragging) {
-        CGFloat contentOffsetX = scrollView.contentOffset.x;
+        // 适配RTL
+        CGPoint convertPoint = [scrollView rtl_contentOffset:scrollView.contentOffset isLTR:self.isLTR];
+        CGFloat contentOffsetX = convertPoint.x;
         if (contentOffsetX < 0) {
             contentOffsetX = 0;
         }
@@ -758,7 +778,10 @@ static NSInteger const kWMControllerCountUndefined = -1;
     if (![scrollView isKindOfClass:WMScrollView.class]) return;
     
     self.menuView.userInteractionEnabled = YES;
-    _selectIndex = (int)(scrollView.contentOffset.x / _contentViewFrame.size.width);
+    // 适配RTL
+    CGPoint convertPoint = [scrollView rtl_contentOffset:scrollView.contentOffset isLTR:self.isLTR];
+    _selectIndex = (int)(convertPoint.x / _contentViewFrame.size.width);
+//    _selectIndex = (int)(scrollView.contentOffset.x / _contentViewFrame.size.width);
     self.currentViewController = self.displayVC[@(self.selectIndex)];
     [self didEnterController:self.currentViewController atIndex:self.selectIndex];
     [self.menuView deselectedItemsIfNeeded];
@@ -785,8 +808,8 @@ static NSInteger const kWMControllerCountUndefined = -1;
 
 - (void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset {
     if (![scrollView isKindOfClass:WMScrollView.class]) return;
-    
-    _targetX = targetContentOffset->x;
+    // 适配RTL
+    _targetX = [scrollView rtl_contentOffset:CGPointMake(targetContentOffset->x, targetContentOffset->y) isLTR:self.isLTR].x;
 }
 
 #pragma mark - WMMenuView Delegate
@@ -794,8 +817,10 @@ static NSInteger const kWMControllerCountUndefined = -1;
     if (!_hasInited) return;
     _selectIndex = (int)index;
     _startDragging = NO;
-    CGPoint targetP = CGPointMake(_contentViewFrame.size.width * index, 0);
-    [self.scrollView setContentOffset:targetP animated:self.pageAnimatable];
+    // 适配RTL
+//    CGPoint targetP = CGPointMake(_contentViewFrame.size.width * index, 0);
+    CGPoint targetP = [_childViewFrames[index] CGRectValue].origin;
+    [self.scrollView setContentOffset:CGPointMake(targetP.x, 0) animated:self.pageAnimatable];
     if (self.pageAnimatable) return;
     // 由于不触发 -scrollViewDidScroll: 手动处理控制器
     UIViewController *currentViewController = self.displayVC[@(currentIndex)];

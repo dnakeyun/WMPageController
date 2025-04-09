@@ -306,6 +306,9 @@ extern NSString *const WMControllerDidFullyDisplayedNotification;
 
 /** MenuView 内部视图与左右的间距 */
 @property (nonatomic, assign) CGFloat menuViewContentMargin;
+/** 默认TRUE，LTR */
+@property (nonatomic, assign, getter=isLTR) BOOL ltr;
+
 
 /**
  *  构造方法，请使用该方法创建控制器. 或者实现数据源方法. /
